@@ -113,6 +113,54 @@ void Motor::begin() {
   motorMowSpinUpTime = 0;
 
   motorRecoveryState = false;
+
+	DriverChip mowDriverChip;
+	DriverChip gearsDriverChip;
+  #ifdef MOTOR_DRIVER_BRUSHLESS    
+    CONSOLE.println("MOTOR_DRIVER_BRUSHLESS: yes");    
+
+    // All motors (gears, mow) are assigned individual motor drivers here.
+    // NOTE: you can adjust/override default motor driver parameters here if required for a certain motor!
+    // example: mowDriverChip.minPwmSpeed = 40; 
+
+    #ifdef MOTOR_DRIVER_BRUSHLESS_MOW_DRV8308  
+      mowDriverChip = DRV8308;
+    #elif MOTOR_DRIVER_BRUSHLESS_MOW_A4931 
+      mowDriverChip = A4931;
+      mowDriverChip.minPwmSpeed = 40;
+      mowDriverChip.keepPwmZeroSpeed = true;
+      mowDriverChip.disableAtPwmZeroSpeed = true;  
+      mowDriverChip.usePwmRamp = false;
+    #elif MOTOR_DRIVER_BRUSHLESS_MOW_BLDC8015A 
+      mowDriverChip = BLDC8015A;    
+    #elif MOTOR_DRIVER_BRUSHLESS_MOW_JYQD
+      mowDriverChip = JYQD;
+    #else 
+      mowDriverChip = CUSTOM;
+    #endif
+    
+    #ifdef MOTOR_DRIVER_BRUSHLESS_GEARS_DRV8308  
+      gearsDriverChip = DRV8308;                         
+    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_A4931 
+      gearsDriverChip = A4931;
+    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_BLDC8015A
+      gearsDriverChip = BLDC8015A;    
+    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_JYQD
+      gearsDriverChip = JYQD;
+    #else 
+      gearsDriverChip = CUSTOM;
+    #endif
+
+  #else 
+    CONSOLE.println("MOTOR_DRIVER_BRUSHLESS: no");  
+	//make driver global  
+    mowDriverChip = mowDriver.MC33926;
+    gearsDriverChip = leftDriver.MC33926;
+  #endif
+
+  leftDriver.begin(gearsDriverChip, pinMotorEnable, pinMotorLeftPWM, pinMotorLeftDir, pinMotorLeftSense, pinMotorLeftFault, 0, false, pinOdometryLeft, true, pinOdometryLeft, AmMotorDriver::OdometryLeftISR);
+  rightDriver.begin(gearsDriverChip, pinMotorEnable, pinMotorRightPWM, pinMotorRightDir, pinMotorRightSense, pinMotorRightFault, 0, false, pinOdometryRight, true, pinOdometryRight, AmMotorDriver::OdometryRightISR);
+  mowDriver.begin(mowDriverChip, pinMotorMowEnable, pinMotorMowPWM, pinMotorMowDir, pinMotorMowSense, pinMotorMowFault, pinMotorMowRpm, true, 0, false, pinMotorMowRpm, AmMotorDriver::OdometryMowISR);
 }
 
 
@@ -127,7 +175,9 @@ void Motor::speedPWM ( int pwmLeft, int pwmRight, int pwmMow )
   pwmRight = min(pwmMax, max(-pwmMax, pwmRight));  
   pwmMow = min(pwmMaxMow, max(-pwmMaxMow, pwmMow)); 
   
-  motorDriver.setMotorPwm(pwmLeft, pwmRight, pwmMow);
+  leftDriver.setMotorPwm(pwmLeft);
+  rightDriver.setMotorPwm(pwmRight);
+  mowDriver.setMotorPwm(pwmMow);
 }
 
 // linear: m/s
@@ -216,7 +266,9 @@ void Motor::stopImmediately(bool includeMowerMotor){
   int ticksLeft=0;
   int ticksRight=0;
   int ticksMow=0;
-  motorDriver.getMotorEncoderTicks(ticksLeft, ticksRight, ticksMow);        
+  leftDriver.getMotorEncoderTicks(ticksLeft);        
+  rightDriver.getMotorEncoderTicks(ticksRight);        
+  mowDriver.getMotorEncoderTicks(ticksMow);        
 }
 
 
@@ -276,7 +328,9 @@ void Motor::run() {
   int ticksLeft;
   int ticksRight;
   int ticksMow;
-  motorDriver.getMotorEncoderTicks(ticksLeft, ticksRight, ticksMow);  
+  leftDriver.getMotorEncoderTicks(ticksLeft);        
+  rightDriver.getMotorEncoderTicks(ticksRight);        
+  mowDriver.getMotorEncoderTicks(ticksMow);  
   
   if (motorLeftPWMCurr < 0) ticksLeft *= -1;
   if (motorRightPWMCurr < 0) ticksRight *= -1;
@@ -372,7 +426,9 @@ bool Motor::checkFault() {
   bool rightFault = false;
   bool mowFault = false;
   if (ENABLE_FAULT_DETECTION){    
-    motorDriver.getMotorFaults(leftFault, rightFault, mowFault);
+    leftDriver.getMotorFaults(leftFault);
+    rightDriver.getMotorFaults(rightFault);
+    mowDriver.getMotorFaults(mowFault);
   }
   if (leftFault) {
     CONSOLE.println("Error: motor driver left signaled fault");
@@ -457,7 +513,9 @@ bool Motor::checkMowRpmFault(){
 void Motor::sense(){
   if (millis() < nextSenseTime) return;
   nextSenseTime = millis() + 20;
-  motorDriver.getMotorCurrent(motorLeftSense, motorRightSense, motorMowSense);
+  leftDriver.getMotorCurrent(motorLeftSense);
+  rightDriver.getMotorCurrent(motorRightSense);
+  mowDriver.getMotorCurrent(motorMowSense);
   float lp = 0.995; // 0.9
   motorRightSenseLP = lp * motorRightSenseLP + (1.0-lp) * motorRightSense;
   motorLeftSenseLP = lp * motorLeftSenseLP + (1.0-lp) * motorLeftSense;
@@ -570,7 +628,9 @@ void Motor::dumpOdoTicks(int seconds){
   int ticksLeft=0;
   int ticksRight=0;
   int ticksMow=0;
-  motorDriver.getMotorEncoderTicks(ticksLeft, ticksRight, ticksMow);  
+  leftDriver.getMotorEncoderTicks(ticksLeft);        
+  rightDriver.getMotorEncoderTicks(ticksRight);        
+  mowDriver.getMotorEncoderTicks(ticksMow);
   motorLeftTicks += ticksLeft;
   motorRightTicks += ticksRight;
   motorMowTicks += ticksMow;
@@ -656,7 +716,9 @@ void Motor::plot(){
       int ticksLeft=0;
       int ticksRight=0;
       int ticksMow=0;
-      motorDriver.getMotorEncoderTicks(ticksLeft, ticksRight, ticksMow);  
+      leftDriver.getMotorEncoderTicks(ticksLeft);        
+  	  rightDriver.getMotorEncoderTicks(ticksRight);        
+	  mowDriver.getMotorEncoderTicks(ticksMow);
       motorLeftTicks += ticksLeft;
       motorRightTicks += ticksRight;
       motorMowTicks += ticksMow;

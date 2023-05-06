@@ -7,6 +7,7 @@
 #define MOTOR_H
 
 #include "pid.h"
+#include "src/driver/AmRobotDriver.h"
 
 
 // selected motor
@@ -55,6 +56,9 @@ class Motor {
     float motorRightSenseLPNorm;
     unsigned long motorMowSpinUpTime;
     bool motorRecoveryState;    
+    AmMotorDriver leftDriver;
+    AmMotorDriver rightDriver;
+    AmMotorDriver mowDriver;
     void begin();
     void run();      
     void test();

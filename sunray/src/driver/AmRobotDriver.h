@@ -52,6 +52,18 @@ struct DriverChip {
 };
 
 
+struct MotorPins
+{
+	int enable;
+	int pwm;
+	int dir;
+	int fault;
+	int sense;
+	int rpm;
+	int odometry;
+};
+
+
 class AmRobotDriver: public RobotDriver {
   public:
     void begin() override;
@@ -62,32 +74,35 @@ class AmRobotDriver: public RobotDriver {
 };
 
 
-class AmMotorDriver: public MotorDriver {
+class AmMotorDriver{
   public:    
     AmMotorDriver();
-    void begin() override;
-    void run() override;
-    void setMotorPwm(int leftPwm, int rightPwm, int mowPwm) override;
-    void getMotorFaults(bool &leftFault, bool &rightFault, bool &mowFault) override;
-    void resetMotorFaults()  override;
-    void getMotorCurrent(float &leftCurrent, float &rightCurrent, float &mowCurrent) override;
-    void getMotorEncoderTicks(int &leftTicks, int &rightTicks, int &mowTicks) override;
-  protected:
-    int lastLeftPwm;
-    int lastRightPwm;
-    int lastMowPwm;
-    int leftSpeedSign; // current motor direction (1 or -1)
-    int rightSpeedSign; // current motor direction (1 or -1)
-    int mowSpeedSign; // current motor direction (1 or -1)
-    DriverChip MC33926;
+    void begin(DriverChip chip, int pinEnable, int pinPWM, int pinDir, int pinSense, int pinFault, int pinRpm, bool bindRpm, int pinOdo, bool bindOdo, int pinInterrupt, void(*interrupt)(void));
+    void run();
+    void setMotorPwm(int pwm);
+    void getMotorFaults(bool &fault);
+    void resetMotorFaults() ;
+    void getMotorCurrent(float &current);
+    void getMotorEncoderTicks(int &ticks);
+	DriverChip MC33926;
     DriverChip DRV8308;
     DriverChip A4931;
     DriverChip BLDC8015A;
     DriverChip JYQD;
     DriverChip CUSTOM;
-    DriverChip mowDriverChip;
-    DriverChip gearsDriverChip;
-    void setMotorDriver(int pinDir, int pinPWM, int speed, DriverChip &chip, int speedSign);    
+	static void OdometryMowISR();
+	static void OdometryLeftISR();
+	static void OdometryRightISR();
+  protected:
+    int lastPwm;
+    int speedSign; // current motor direction (1 or -1)
+	int odomTicks;
+	unsigned long motorTicksTimeout;
+	unsigned long motorTransitionTime;
+	float motorDurationMax;
+    DriverChip driverChip;
+	MotorPins pins;
+    void setMotorDriver(int pinDir, int pinPWM, int speed, DriverChip &chip, int speedSign);
 };
 
 class AmBatteryDriver : public BatteryDriver {

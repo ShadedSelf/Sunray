@@ -578,7 +578,7 @@ void start(){
   String rid = "";
   robotDriver.getRobotID(rid);
   CONSOLE.println(rid);
-  motorDriver.begin();
+  //motorDriver.begin();
   rainDriver.begin();
   liftDriver.begin();  
   battery.begin();      

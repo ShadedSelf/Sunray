@@ -21,25 +21,6 @@
 #endif
 
 
-#define SUPER_SPIKE_ELIMINATOR 1  // advanced spike elimination  (experimental, comment out to disable)
-
-
-volatile int odomTicksLeft  = 0;
-volatile int odomTicksRight = 0;
-volatile int odomTicksMow = 0;
-
-volatile unsigned long motorLeftTicksTimeout = 0;
-volatile unsigned long motorRightTicksTimeout = 0;
-volatile unsigned long motorMowTicksTimeout = 0;
-
-volatile unsigned long motorLeftTransitionTime = 0;
-volatile unsigned long motorRightTransitionTime = 0;
-volatile unsigned long motorMowTransitionTime = 0;
-
-volatile float motorLeftDurationMax = 0;
-volatile float motorRightDurationMax = 0;
-volatile float motorMowDurationMax = 0;
-
 volatile bool leftPressed = false;
 volatile bool rightPressed = false;
 
@@ -100,50 +81,51 @@ float AmRobotDriver::getCpuTemperature(){
 
 // odometry signal change interrupt
 
-void OdometryMowISR(){			  
+#define SUPER_SPIKE_ELIMINATOR 1  // advanced spike elimination  (experimental, comment out to disable)
+
+void AmMotorDriver::OdometryMowISR(){			  
   if (digitalRead(pinMotorMowRpm) == LOW) return;
-  if (millis() < motorMowTicksTimeout) return; // eliminate spikes  
+  if (millis() < motor.mowDriver.motorTicksTimeout) return; // eliminate spikes  
   #ifdef SUPER_SPIKE_ELIMINATOR
-    unsigned long duration = millis() - motorMowTransitionTime;
+    unsigned long duration = millis() - motor.mowDriver.motorTransitionTime;
     if (duration > 5) duration = 0;
-    motorMowTransitionTime = millis();
-    motorMowDurationMax = 0.7 * max(motorMowDurationMax, ((float)duration));
-    motorMowTicksTimeout = millis() + motorMowDurationMax;
+    motor.mowDriver.motorTransitionTime = millis();
+    motor.mowDriver.motorDurationMax = 0.7 * max(motor.mowDriver.motorDurationMax, ((float)duration));
+    motor.mowDriver.motorTicksTimeout = millis() + motor.mowDriver.motorDurationMax;
   #else
-    motorMowTicksTimeout = millis() + 1;
+    motor.mowDriver.motorTicksTimeout = millis() + 1;
   #endif
-  odomTicksMow++;    
+  motor.mowDriver.odomTicks++;    
 }
 
-
-void OdometryLeftISR(){			  
+void AmMotorDriver::OdometryLeftISR(){			  
   if (digitalRead(pinOdometryLeft) == LOW) return;
-  if (millis() < motorLeftTicksTimeout) return; // eliminate spikes  
+  if (millis() < motor.leftDriver.motorTicksTimeout) return; // eliminate spikes  
   #ifdef SUPER_SPIKE_ELIMINATOR
-    unsigned long duration = millis() - motorLeftTransitionTime;
+    unsigned long duration = millis() - motor.leftDriver.motorTransitionTime;
     if (duration > 5) duration = 0;
-    motorLeftTransitionTime = millis();
-    motorLeftDurationMax = 0.7 * max(motorLeftDurationMax, ((float)duration));
-    motorLeftTicksTimeout = millis() + motorLeftDurationMax;
+    motor.leftDriver.motorTransitionTime = millis();
+    motor.leftDriver.motorDurationMax = 0.7 * max(motor.leftDriver.motorDurationMax, ((float)duration));
+    motor.leftDriver.motorTicksTimeout = millis() + motor.leftDriver.motorDurationMax;
   #else
-    motorLeftTicksTimeout = millis() + 1;
+    motor.leftDriver.motorTicksTimeout = millis() + 1;
   #endif
-  odomTicksLeft++;    
+  motor.leftDriver.odomTicks++;    
 }
 
-void OdometryRightISR(){			
+void AmMotorDriver::OdometryRightISR(){			
   if (digitalRead(pinOdometryRight) == LOW) return;  
-  if (millis() < motorRightTicksTimeout) return; // eliminate spikes
+  if (millis() < motor.rightDriver.motorTicksTimeout) return; // eliminate spikes
   #ifdef SUPER_SPIKE_ELIMINATOR
-    unsigned long duration = millis() - motorRightTransitionTime;
+    unsigned long duration = millis() - motor.rightDriver.motorTransitionTime;
     if (duration > 5) duration = 0;  
-    motorRightTransitionTime = millis();
-    motorRightDurationMax = 0.7 * max(motorRightDurationMax, ((float)duration));  
-    motorRightTicksTimeout = millis() + motorRightDurationMax;
+    motor.rightDriver.motorTransitionTime = millis();
+    motor.rightDriver.motorDurationMax = 0.7 * max(motor.rightDriver.motorDurationMax, ((float)duration));  
+    motor.rightDriver.motorTicksTimeout = millis() + motor.rightDriver.motorDurationMax;
   #else
-    motorRightTicksTimeout = millis() + 1;
+    motor.rightDriver.motorTicksTimeout = millis() + 1;
   #endif
-  odomTicksRight++;        
+  motor.rightDriver.odomTicks++;        
   
   #ifdef TEST_PIN_ODOMETRY
     testValue = !testValue;
@@ -273,93 +255,45 @@ AmMotorDriver::AmMotorDriver(){
 }
     
 
-void AmMotorDriver::begin(){      
+void AmMotorDriver::begin(DriverChip chip, int pinEnable, int pinPWM, int pinDir, int pinSense, int pinFault, int pinRpm, bool bindRpm, int pinOdo, bool bindOdo, int pinInterrupt, void(*interrupt)(void)){      
 
-  #ifdef MOTOR_DRIVER_BRUSHLESS    
-    CONSOLE.println("MOTOR_DRIVER_BRUSHLESS: yes");    
+  driverChip = chip;
+  pinMode(pinEnable, OUTPUT);
+  digitalWrite(pinMotorEnable, driverChip.enableActive);
+  pinMode(pinPWM, OUTPUT);
+  pinMode(pinDir, OUTPUT);
+  pinMode(pinSense, INPUT);
+  pinMode(pinFault, INPUT);
 
-    // All motors (gears, mow) are assigned individual motor drivers here.
-    // NOTE: you can adjust/override default motor driver parameters here if required for a certain motor!
-    // example: mowDriverChip.minPwmSpeed = 40; 
+  if (bindRpm) // mow motor only
+  {
+	pinMode(pinRpm, INPUT);
+  	pinMode(pinRpm, INPUT_PULLUP);  
+  }
 
-    #ifdef MOTOR_DRIVER_BRUSHLESS_MOW_DRV8308  
-      mowDriverChip = DRV8308;
-    #elif MOTOR_DRIVER_BRUSHLESS_MOW_A4931 
-      mowDriverChip = A4931;
-      mowDriverChip.minPwmSpeed = 40;
-      mowDriverChip.keepPwmZeroSpeed = true;
-      mowDriverChip.disableAtPwmZeroSpeed = true;  
-      mowDriverChip.usePwmRamp = false;
-    #elif MOTOR_DRIVER_BRUSHLESS_MOW_BLDC8015A 
-      mowDriverChip = BLDC8015A;    
-    #elif MOTOR_DRIVER_BRUSHLESS_MOW_JYQD
-      mowDriverChip = JYQD;
-    #else 
-      mowDriverChip = CUSTOM;
-    #endif
-    
-    #ifdef MOTOR_DRIVER_BRUSHLESS_GEARS_DRV8308  
-      gearsDriverChip = DRV8308;                         
-    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_A4931 
-      gearsDriverChip = A4931;
-    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_BLDC8015A
-      gearsDriverChip = BLDC8015A;    
-    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_JYQD
-      gearsDriverChip = JYQD;
-    #else 
-      gearsDriverChip = CUSTOM;
-    #endif
+  if (bindOdo){ // drive motor only
+  	pinMode(pinOdo, INPUT_PULLUP);
+	//pinMan.setDebounce(pinOdo, 100); // reject spikes shorter than usecs on pin
+  }
 
-  #else 
-    CONSOLE.println("MOTOR_DRIVER_BRUSHLESS: no");    
-    mowDriverChip = MC33926;
-    gearsDriverChip = MC33926;
-  #endif
-
-
-  // left wheel motor
-  pinMode(pinMotorEnable, OUTPUT);
-  digitalWrite(pinMotorEnable, gearsDriverChip.enableActive);
-  pinMode(pinMotorLeftPWM, OUTPUT);
-  pinMode(pinMotorLeftDir, OUTPUT);
-  pinMode(pinMotorLeftSense, INPUT);
-  pinMode(pinMotorLeftFault, INPUT);
-
-  // right wheel motor
-  pinMode(pinMotorRightPWM, OUTPUT);
-  pinMode(pinMotorRightDir, OUTPUT);
-  pinMode(pinMotorRightSense, INPUT);
-  pinMode(pinMotorRightFault, INPUT);
-
-  // mower motor
-  pinMode(pinMotorMowDir, OUTPUT);
-  pinMode(pinMotorMowPWM, OUTPUT);
-  pinMode(pinMotorMowSense, INPUT);
-  pinMode(pinMotorMowRpm, INPUT);
-  pinMode(pinMotorMowRpm, INPUT_PULLUP);  
-  pinMode(pinMotorMowEnable, OUTPUT);
-  digitalWrite(pinMotorMowEnable, mowDriverChip.enableActive);
-  pinMode(pinMotorMowFault, INPUT);
-
-  // odometry
-  pinMode(pinOdometryLeft, INPUT_PULLUP);
-  //pinMode(pinOdometryLeft2, INPUT_PULLUP);
-  pinMode(pinOdometryRight, INPUT_PULLUP);
-  //pinMode(pinOdometryRight2, INPUT_PULLUP);
-
-  // lift sensor
-  pinMode(pinLift, INPUT_PULLUP);
+  pins.enable = pinEnable;
+  pins.pwm = pinPWM;
+  pins.dir = pinDir;
+  pins.sense = pinSense;
+  pins.fault = pinFault;
+  pins.rpm = pinRpm;
+  pins.odometry = pinOdo;
 
   // enable interrupts
-  attachInterrupt(pinOdometryLeft, OdometryLeftISR, CHANGE);  
-  attachInterrupt(pinOdometryRight, OdometryRightISR, CHANGE);  
-  attachInterrupt(pinMotorMowRpm, OdometryMowISR, CHANGE);  
-    
-	//pinMan.setDebounce(pinOdometryLeft, 100);  // reject spikes shorter than usecs on pin
-	//pinMan.setDebounce(pinOdometryRight, 100);  // reject spikes shorter than usecs on pin	
-  
-  leftSpeedSign = rightSpeedSign = mowSpeedSign = 1;
-  lastRightPwm = lastLeftPwm = lastMowPwm = 0;
+  attachInterrupt(pinInterrupt, interrupt, CHANGE);   
+
+  speedSign = 1;
+  lastPwm = 0;
+
+  odomTicks = 0;
+  motorTicksTimeout = 0;
+  motorTransitionTime = 0;
+  motorDurationMax = 0;
 }
 
 
@@ -417,118 +351,63 @@ void AmMotorDriver::setMotorDriver(int pinDir, int pinPWM, int speed, DriverChip
   }  
 }
     
-void AmMotorDriver::setMotorPwm(int leftPwm, int rightPwm, int mowPwm){  
+void AmMotorDriver::setMotorPwm(int pwm){  
   // remember speed sign during zero-transition
-  if (leftPwm < 0) leftSpeedSign = -1;
-  if (leftPwm > 0) leftSpeedSign = 1;
-  if (rightPwm < 0) rightSpeedSign = -1;
-  if (rightPwm > 0) rightSpeedSign = 1;
-  if (mowPwm < 0) mowSpeedSign = -1;
-  if (mowPwm > 0) mowSpeedSign = 1;   
+  if (pwm < 0) speedSign = -1;
+  if (pwm > 0) speedSign = 1; 
   
   // limit pwm to ramp if required
-  if (gearsDriverChip.usePwmRamp){
-    int deltaLeftPwm = leftPwm-lastLeftPwm;
-    leftPwm = leftPwm + min(1, max(-1, deltaLeftPwm));    
-    int deltaRightPwm = rightPwm-lastRightPwm;
-    rightPwm = rightPwm + min(1, max(-1, deltaRightPwm));    
+  if (driverChip.usePwmRamp){
+    int deltaPwm = pwm-lastPwm;
+    pwm = pwm + min(1, max(-1, deltaPwm));      
   }
-  if (mowDriverChip.usePwmRamp){
-    int deltaMowPwm = mowPwm-lastMowPwm;
-    mowPwm = mowPwm + min(1, max(-1, deltaMowPwm));      
-  }  
 
   // remember last PWM values
-  lastLeftPwm = leftPwm;  
-  lastRightPwm = rightPwm;
-  lastMowPwm = mowPwm;
+  lastPwm = pwm;  
 
   // apply motor PWMs
-  setMotorDriver(pinMotorLeftDir, pinMotorLeftPWM, leftPwm, gearsDriverChip, leftSpeedSign);
-  setMotorDriver(pinMotorRightDir, pinMotorRightPWM, rightPwm, gearsDriverChip, rightSpeedSign);
-  setMotorDriver(pinMotorMowDir, pinMotorMowPWM, mowPwm, mowDriverChip, mowSpeedSign);
+  setMotorDriver(pins.dir, pins.pwm, pwm, driverChip, speedSign);
   
   // disable driver at zero speed (brake function)    
-  bool enableGears = gearsDriverChip.enableActive;
-  bool enableMow = mowDriverChip.enableActive;  
-  if (gearsDriverChip.disableAtPwmZeroSpeed){  
-    if ((leftPwm == 0) && (rightPwm == 0)){
-      enableGears = !gearsDriverChip.enableActive;                
+  bool enabled = driverChip.enableActive;
+  if (driverChip.disableAtPwmZeroSpeed){  
+    if (pwm == 0){
+      enabled = !driverChip.enableActive;                
     }
-    digitalWrite(pinMotorEnable, enableGears);
+    digitalWrite(pins.enable, enabled);
   }
-  if (mowDriverChip.disableAtPwmZeroSpeed){ 
-    if (mowPwm == 0) {
-      if (mowDriverChip.disableAtPwmZeroSpeed){
-        enableMow = !mowDriverChip.enableActive;
-      }
-    }      
-    digitalWrite(pinMotorMowEnable, enableMow);
-  }  
 }
 
 
-void AmMotorDriver::getMotorFaults(bool &leftFault, bool &rightFault, bool &mowFault){ 
-  if (digitalRead(pinMotorLeftFault) == gearsDriverChip.faultActive) {
-    leftFault = true;
-  }
-  if  (digitalRead(pinMotorRightFault) == gearsDriverChip.faultActive) {
-    rightFault = true;
-  }
-  if (digitalRead(pinMotorMowFault) == mowDriverChip.faultActive) {
-    mowFault = true;
+void AmMotorDriver::getMotorFaults(bool &fault){ 
+  if (digitalRead(pins.fault) == driverChip.faultActive) {
+    fault = true;
   }
 }
 
 void AmMotorDriver::resetMotorFaults(){  
-  if (digitalRead(pinMotorLeftFault) == gearsDriverChip.faultActive) {
-    if (gearsDriverChip.resetFaultByToggleEnable){
-      digitalWrite(pinMotorEnable, !gearsDriverChip.enableActive);
-      digitalWrite(pinMotorEnable, gearsDriverChip.enableActive);
-    }
-  }
-  if  (digitalRead(pinMotorRightFault) == gearsDriverChip.faultActive) {
-    if (gearsDriverChip.resetFaultByToggleEnable){
-      digitalWrite(pinMotorEnable, !gearsDriverChip.enableActive);
-      digitalWrite(pinMotorEnable, gearsDriverChip.enableActive);
-    }
-  }
-  if (digitalRead(pinMotorMowFault) == mowDriverChip.faultActive) {
-    if (mowDriverChip.resetFaultByToggleEnable){
-      digitalWrite(pinMotorMowEnable, !mowDriverChip.enableActive);
-      digitalWrite(pinMotorMowEnable, mowDriverChip.enableActive);
+  if (digitalRead(pins.fault) == driverChip.faultActive) {
+    if (driverChip.resetFaultByToggleEnable){
+      digitalWrite(pins.enable, !driverChip.enableActive);
+      digitalWrite(pins.enable, driverChip.enableActive);
     }
   }
 }
 
-void AmMotorDriver::getMotorCurrent(float &leftCurrent, float &rightCurrent, float &mowCurrent){
+void AmMotorDriver::getMotorCurrent(float &current){
   // current (amps)= ((ADCvoltage + ofs)^pow) * scale
   float ValuePosCheck	= 0;
-  ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorLeftSense))) + gearsDriverChip.adcVoltToAmpOfs);
+  ValuePosCheck = (((float)ADC2voltage(analogRead(pins.sense))) + driverChip.adcVoltToAmpOfs);
   if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
-  leftCurrent = pow(
-      ValuePosCheck, gearsDriverChip.adcVoltToAmpPow
-      )  * gearsDriverChip.adcVoltToAmpScale;
-
-  ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorRightSense))) + gearsDriverChip.adcVoltToAmpOfs);
-  if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
-  rightCurrent = pow(
-      ValuePosCheck, gearsDriverChip.adcVoltToAmpPow
-      )  * gearsDriverChip.adcVoltToAmpScale;
-
-  ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorMowSense))) + gearsDriverChip.adcVoltToAmpOfs);
-  if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
-  mowCurrent = pow(
-            ValuePosCheck, mowDriverChip.adcVoltToAmpPow
-      )  * mowDriverChip.adcVoltToAmpScale;
+  current = pow(
+      ValuePosCheck, driverChip.adcVoltToAmpPow
+      )  * driverChip.adcVoltToAmpScale;
 }
 
-void AmMotorDriver::getMotorEncoderTicks(int &leftTicks, int &rightTicks, int &mowTicks){
-  leftTicks = odomTicksLeft;
-  rightTicks = odomTicksRight;  
-  mowTicks = odomTicksMow;
+void AmMotorDriver::getMotorEncoderTicks(int &ticks){
+  ticks = odomTicks;
   // reset counters
-  odomTicksLeft = odomTicksRight = odomTicksMow = 0;
+  odomTicks = 0;
 }    
 
 
@@ -699,6 +578,7 @@ bool AmRainSensorDriver::triggered(){
 void AmLiftSensorDriver::begin(){
   nextControlTime = 0;
   isLifted = false;  
+  pinMode(pinLift, INPUT_PULLUP);
 }
 
 void AmLiftSensorDriver::run(){

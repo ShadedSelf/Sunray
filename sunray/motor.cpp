@@ -163,6 +163,9 @@ void Motor::begin() {
   mowDriver.begin(mowDriverChip, pinMotorMowEnable, pinMotorMowPWM, pinMotorMowDir, pinMotorMowSense, pinMotorMowFault, pinMotorMowRpm, true, 0, false, pinMotorMowRpm, AmMotorDriver::OdometryMowISR);
 }
 
+void Motor::setMowMaxPwm( int val ){
+  pwmMaxMow = val;
+}
 
 void Motor::speedPWM ( int pwmLeft, int pwmRight, int pwmMow )
 {

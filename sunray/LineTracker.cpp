@@ -255,7 +255,7 @@ void trackLine(bool runControl){
       k = stanleyTrackingSlowK; //STANLEY_CONTROL_K_SLOW;   
       p = stanleyTrackingSlowP; //STANLEY_CONTROL_P_SLOW;          
     }
-    angular =  p * trackerDiffDelta + atan2(k * lateralError, (0.001 + fabs(motor.linearSpeedSet)));       // correct for path errors           
+    angular = p * trackerDiffDelta + atan(k * lateralError);       // correct for path errors           
     /*pidLine.w = 0;              
     pidLine.x = lateralError;
     pidLine.max_output = PI;
